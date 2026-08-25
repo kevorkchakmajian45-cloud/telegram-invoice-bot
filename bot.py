@@ -6,8 +6,6 @@ import telebot
 import google.generativeai as genai
 from PIL import Image
 import io
-from google.api_core import retry # استيراد خاصية إعادة المحاولة
-from google.api_core import client_options # استيراد خيارات العميل
 
 # إعداد السجلات
 logging.basicConfig(
@@ -19,14 +17,12 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# تهيئة Gemini API مع ضبط مهلة الاتصال (Timeout) لـ 300 ثانية
-genai.configure(
-    api_key=GOOGLE_API_KEY,
-    client_options=client_options.ClientOptions(
-        api_endpoint="generativelanguage.googleapis.com"
-    )
-)
-model = genai.GenerativeModel('gemini-1.5-flash-latest')
+# تهيئة Gemini API بالاسم القياسي المستقر
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# تهيئة بوت التليجرام
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # إعداد خادم Flask
 app = Flask(__name__)
@@ -52,7 +48,7 @@ def send_welcome(message):
 @bot.message_handler(content_types=['photo'])
 def handle_receipt(message):
     try:
-        bot.reply_to(message, "⏳ جاري قراءة وتحليل الفاتورة بالذكاء الاصطناعي (قد يستغرق وقتاً للصورة الكبيرة)...")
+        bot.reply_to(message, "⏳ جاري قراءة وتحليل الفاتورة بالذكاء الاصطناعي...")
         
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
@@ -68,12 +64,7 @@ def handle_receipt(message):
         }
         """
         
-        # إرسال الطلب مع ضبط مهلة الاستجابة (request_options) لـ 300 ثانية
-        response = model.generate_content(
-            [prompt, image],
-            request_options={"timeout": 300} # مهلة اتصال 5 دقائق
-        )
-        
+        response = model.generate_content([prompt, image])
         text_result = response.text.strip()
         
         if text_result.startswith("```json"):
