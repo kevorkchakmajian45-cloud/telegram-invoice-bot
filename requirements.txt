@@ -1,2 +1,5 @@
-python-telegram-bot
-google-genai
+pytelegrambotapi
+google-generativeai
+flask
+gspread
+google-auth
