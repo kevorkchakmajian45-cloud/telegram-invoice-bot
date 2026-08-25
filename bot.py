@@ -1,8 +1,7 @@
 import os
 import logging
 import json
-from threading import Thread
-from flask import Flask
+from flask import Flask, request
 import telebot
 import google.generativeai as genai
 from PIL import Image
@@ -25,16 +24,20 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 # تهيئة بوت التليجرام
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-# إعداد خادم Flask البسيط لـ Render
+# إعداد خادم Flask للعمل كـ Web Service على Render
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🤖 Telegram Invoice Bot is running!"
+    return "🤖 Telegram Invoice Bot is running successfully!"
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+# استقبال التحديثات من تليجرام عبر Webhook لتجنب مشاكل الـ Timeout
+@app.route(f'/{TELEGRAM_BOT_TOKEN}', methods=['POST'])
+def receive_update():
+    json_str = request.get_data().decode('UTF-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -49,7 +52,6 @@ def handle_receipt(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # فتح الصورة باستخدام مكتبة PIL من الذاكرة مباشرة
         image = Image.open(io.BytesIO(downloaded_file))
         
         prompt = """
@@ -65,7 +67,6 @@ def handle_receipt(message):
         response = model.generate_content([prompt, image])
         text_result = response.text.strip()
         
-        # تنظيف الرد للحصول على JSON سليم
         if text_result.startswith("```json"):
             text_result = text_result[7:]
         if text_result.endswith("```"):
@@ -78,7 +79,6 @@ def handle_receipt(message):
         row_total = data.get("total", "غير متوفر")
         row_details = data.get("details", "غير متوفر")
         
-        # إرسال النتيجة للمستخدم
         bot.reply_to(message, f"✅ **تم تحليل الفاتورة بنجاح!**\n\n📅 **التاريخ:** {row_date}\n🏪 **البائع:** {row_vendor}\n💰 **المبلغ:** {row_total}\n📝 **التفاصيل:** {row_details}")
 
     except Exception as e:
@@ -86,7 +86,12 @@ def handle_receipt(message):
         bot.reply_to(message, f"عذراً، حدث خطأ أثناء تحليل الفاتورة: {str(e)}")
 
 if __name__ == "__main__":
-    t = Thread(target=run_flask)
-    t.start()
-    logger.info("🤖 Bot is starting polling...")
-    bot.infinity_polling()
+    # تعيين الـ Webhook تلقائياً عند بدء التشغيل
+    RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+    if RENDER_EXTERNAL_URL:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{RENDER_EXTERNAL_URL}/{TELEGRAM_BOT_TOKEN}")
+        logger.info(f"Webhook set to {RENDER_EXTERNAL_URL}")
+    
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
