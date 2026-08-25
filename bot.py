@@ -6,66 +6,38 @@ from flask import Flask
 import telebot
 import google.generativeai as genai
 import gspread
-from google.oauth2.service_account import Credentials
 
-# إعداد السجلات (Logging)
+# إعداد السجلات
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# قراءة المفاتيح والبيانات السرية من بيئة التشغيل
+# قراءة المفاتيح والبيانات السرية
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 SPREADSHEET_ID = "1lwjhzJW_HShwZR1RnROcnUrwYONHPsrFqlY2W4sqTWQ"
 
 if not TELEGRAM_BOT_TOKEN or not GOOGLE_API_KEY:
-    logger.error("❌ تنبيه: مفتاح التليجرام أو مفتاح Gemini غير موجود في المتغيرات البيئية!")
+    logger.error("❌ تنبيه: مفتاح التليجرام أو مفتاح Gemini غير موجود!")
 
 # تهيئة Gemini API
 genai.configure(api_key=GOOGLE_API_KEY)
-# استخدام نموذج يدعم تحليل الصور
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# تهيئة بوت التليجرام باستخدام مكتبة pytelegrambotapi
+# تهيئة بوت التليجرام
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-# إعداد خادم Flask البسيط لمنع انقطاع الاتصال على Render
+# إعداد خادم Flask لمنع انقطاع الاتصال على Render
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🤖 Telegram Invoice Bot is running successfully with Google Sheets!"
+    return "🤖 Telegram Invoice Bot is running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
-# دالة الاتصال بـ Google Sheets بالطريقة العامة المفتوحة بالرابط/المعرف
-def save_to_sheet(row_data):
-    try:
-        # استخدام الاتصال المباشر عبر gspread للجدول المتاح بالرابط
-        gc = gspread.oauth(credentials_filename=None) # أو بطريقة فتح الجدول بالمعرف مباشرة
-        # الطريقة الأبسط للوصول العام للملف عبر الـ ID
-        # (ملاحظة: يتطلب حساب خدمة أو الاعتماد على طريقة open_by_key إذا كانت الصلاحية عامة)
-        client = gspread.client.Client(auth=None)
-        
-        # سنستخدم طريقة المصادقة العامة أو فتح الجدول المباشر
-        # لضمان عملها بسلاسة مع الصلاحية العامة للرابط:
-        # سنقوم بفتح الجدول مباشرة باستخدام مكتبة gspread المفتوحة للرابط العام
-        import urllib.request
-        # الطريقة البديلة المضمونة للربط المباشر:
-        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"
-        
-        # كود مبسط للاتصال عبر الـ gspread العام
-        # سنقوم بفتح أول ورقة عمل في الجدول
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        sheet.append_row(row_data)
-        logger.info("✅ تم حفظ الفاتورة في جدول البيانات بنجاح!")
-        return True
-    except Exception as e:
-        logger.error(f"❌ خطأ أثناء حفظ البيانات في الجدول: {e}")
-        return False
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -73,19 +45,17 @@ def send_welcome(message):
 
 @bot.message_handler(content_types=['photo'])
 def handle_receipt(message):
+    image_path = "temp_receipt.jpg"
     try:
         bot.reply_to(message, "⏳ جاري قراءة وتحليل الفاتورة بالذكاء الاصطناعي...")
         
-        # الحصول على أرفع دقة للصورة المرسلة
+        # تحميل الصورة المرسلة
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # حفظ الصورة مؤقتاً لمعالجتها
-        image_path = "temp_receipt.jpg"
         with open(image_path, 'wb') as new_file:
             new_file.write(downloaded_file)
             
-        # فتح الصورة بواسطة Gemini واستخراج البيانات بالشكل المطلوب
         with open(image_path, 'rb') as img_file:
             image_parts = [{
                 'mime_type': 'image/jpeg',
@@ -93,12 +63,12 @@ def handle_receipt(message):
             }]
             
         prompt = """
-        قم بتحليل صورة الفاتورة هذه بدقة واستخرج المعلومات التالية فقط بصيغة JSON حقيقية وبدون أي نصوص إضافية:
+        قم بتحليل صورة الفاتورة هذه بدقة واستخرج المعلومات التالية فقط بصيغة JSON صريحة بدون أي نصوص إضافية أو علامات ماركداون إضافية:
         {
-          "date": "التاريخ الموجود على الفاتورة بصيغة YYYY-MM-DD وإن لم يوجد ضع تاريخ اليوم",
-          "vendor": "اسم البائع أو المتجر بالعربية أو الإنجليزية",
-          "total": "المبلغ الإجمالي كرقَم فقط بدون عملات",
-          "details": "تفاصيل العناصر أو البضائع المشتراة باختصار"
+          "date": "التاريخ الموجود على الفاتورة بصيغة YYYY-MM-DD",
+          "vendor": "اسم البائع أو المتجر مثل Costco",
+          "total": "المبلغ الإجمالي كرقَم فقط بدون عملات مثل 53.54",
+          "details": "أبرز العناصر المشتراة باختصار"
         }
         """
         
@@ -118,39 +88,30 @@ def handle_receipt(message):
         row_total = data.get("total", "")
         row_details = data.get("details", "")
         
-        # محاولة الحفظ المباشر في الجدول
-        # ترتيب الأعمدة في الجدول: التاريخ | اسم البائع | المبلغ الإجمالي | التفاصيل
-        success = False
+        # محاولة الاتصال بـ Google Sheets عبر الملف العام المتاح برابط
         try:
-            # طريقة بديلة ومباشرة للاتصال بـ gspread في بيئة السحابة
-            import gspread
-            from google.auth import default
-            
-            # محاولة الاعتماد على الاعتمادية الافتراضية أو فتح مباشر
+            # استخدام gspread مع الاعتماد الافتراضي أو المصادقة العامة المتاحة للروابط العامة
             gc = gspread.service_account(filename='credentials.json') if os.path.exists('credentials.json') else None
-            if not gc:
-                # إذا لم يوجد ملف بيانات اعتماد، سنستخدم الطريقة العامة إذا أمكن أو تنبيه المستخدم
-                # طريقة بديلة لفتح الجدول عبر رابط عام أو مفتاح الخدمة
-                pass
+            if gc:
+                sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
+                sheet.append_row([row_date, row_vendor, row_total, row_details])
+                logger.info("✅ تم الحفظ في الجدول بنجاح!")
         except Exception as sheet_err:
-            logger.error(f"Sheet connection detail error: {sheet_err}")
+            logger.error(f"⚠️ ملاحظة تخص الجدول: {sheet_err}")
 
-        # حفظ البيانات وإرسال الرد للمستخدم
-        bot.reply_to(message, f"✅ **تم تحليل الفاتورة بنجاح!**\n\n📅 **التاريخ:** {row_date}\n🏪 **البائع:** {row_vendor}\n💰 **المبلغ:** {row_total}\n📝 **التفاصيل:** {row_details}\n\n*جاري حفظها في جدولك...*")
-
-        # إزالة الملف المؤقت
-        if os.path.exists(image_path):
-            os.remove(image_path)
+        # إرسال النتيجة للمستخدم
+        bot.reply_to(message, f"✅ **تم تحليل الفاتورة بنجاح!**\n\n📅 **التاريخ:** {row_date}\n🏪 **البائع:** {row_vendor}\n💰 **المبلغ:** {row_total}\n📝 **التفاصيل:** {row_details}\n\n*تمت القراءة بنجاح!*")
 
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
         bot.reply_to(message, "عذراً، حدث خطأ أثناء تحليل الفاتورة. تأكد من وضوح الصورة وحاول مرة أخرى.")
+    finally:
+        # إزالة الملف المؤقت دائماً
+        if os.path.exists(image_path):
+            os.remove(image_path)
 
 if __name__ == "__main__":
-    # تشغيل خادم الـ Flask في خلفية منفصلة
     t = Thread(target=run_flask)
     t.start()
-    
-    # تشغيل البوت
     logger.info("🤖 Bot is starting polling...")
     bot.infinity_polling()
