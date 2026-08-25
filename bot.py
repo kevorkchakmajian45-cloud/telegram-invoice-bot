@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# تهيئة Gemini API مع النموذج المحدث
+# تهيئة Gemini API
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
@@ -92,10 +92,14 @@ def handle_receipt(message):
         logger.error(f"Error handling photo: {e}")
         bot.reply_to(message, f"عذراً، حدث خطأ أثناء تحليل الفاتورة: {str(e)}")
 
-# ضبط الـ Webhook تلقائياً عند بدء التشغيل
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
-if RENDER_EXTERNAL_URL and TELEGRAM_BOT_TOKEN:
-    webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_BOT_TOKEN}"
-    bot.remove_webhook()
-    bot.set_webhook(url=webhook_url)
-    logger.info(f"Webhook set to: {webhook_url}")
+# ضبط الـ Webhook عند بدء التشغيل المحلي أو عبر الخادم
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+else:
+    # هذا الجزء يعمل تلقائياً عند التشغيل عبر gunicorn على Render
+    RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+    if RENDER_EXTERNAL_URL and TELEGRAM_BOT_TOKEN:
+        webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_BOT_TOKEN}"
+        bot.remove_webhook()
+        bot.set_webhook(url=webhook_url)
+        logger.info(f"Webhook set to: {webhook_url}")
