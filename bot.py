@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# تهيئة Gemini API
+# تهيئة Gemini API مع النموذج المحدث
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 # تهيئة بوت التليجرام
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -55,7 +55,7 @@ def handle_receipt(message):
         image = Image.open(io.BytesIO(downloaded_file))
         
         prompt = """
-        قم بتحليل صورة الفاتورة هذه بدقة واستخرج المعلومات التالية فقط بصيغة JSON صريحة بدون أي علامات ماركداون:
+        قم بتحليل صورة الفاتورة هذه بدقة واستخرج المعلومات التالية فقط بصيغة JSON صريحة وبدون أي علامات ماركداون:
         {
           "date": "التاريخ الموجود على الفاتورة بصيغة YYYY-MM-DD",
           "vendor": "اسم المتجر أو البائع",
@@ -92,7 +92,7 @@ def handle_receipt(message):
         logger.error(f"Error handling photo: {e}")
         bot.reply_to(message, f"عذراً، حدث خطأ أثناء تحليل الفاتورة: {str(e)}")
 
-# ضبط الـ Webhook تلقائياً عند التشغيل عبر السيرفر
+# ضبط الـ Webhook تلقائياً عند بدء التشغيل
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 if RENDER_EXTERNAL_URL and TELEGRAM_BOT_TOKEN:
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_BOT_TOKEN}"
