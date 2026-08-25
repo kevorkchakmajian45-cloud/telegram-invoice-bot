@@ -6,6 +6,8 @@ import telebot
 import google.generativeai as genai
 from PIL import Image
 import io
+from google.api_core import retry # استيراد خاصية إعادة المحاولة
+from google.api_core import client_options # استيراد خيارات العميل
 
 # إعداد السجلات
 logging.basicConfig(
@@ -17,12 +19,14 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# تهيئة Gemini API
-genai.configure(api_key=GOOGLE_API_KEY)
+# تهيئة Gemini API مع ضبط مهلة الاتصال (Timeout) لـ 300 ثانية
+genai.configure(
+    api_key=GOOGLE_API_KEY,
+    client_options=client_options.ClientOptions(
+        api_endpoint="generativelanguage.googleapis.com"
+    )
+)
 model = genai.GenerativeModel('gemini-1.5-flash-latest')
-
-# تهيئة بوت التليجرام
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 # إعداد خادم Flask
 app = Flask(__name__)
@@ -48,7 +52,7 @@ def send_welcome(message):
 @bot.message_handler(content_types=['photo'])
 def handle_receipt(message):
     try:
-        bot.reply_to(message, "⏳ جاري قراءة وتحليل الفاتورة بالذكاء الاصطناعي...")
+        bot.reply_to(message, "⏳ جاري قراءة وتحليل الفاتورة بالذكاء الاصطناعي (قد يستغرق وقتاً للصورة الكبيرة)...")
         
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
@@ -64,7 +68,12 @@ def handle_receipt(message):
         }
         """
         
-        response = model.generate_content([prompt, image])
+        # إرسال الطلب مع ضبط مهلة الاستجابة (request_options) لـ 300 ثانية
+        response = model.generate_content(
+            [prompt, image],
+            request_options={"timeout": 300} # مهلة اتصال 5 دقائق
+        )
+        
         text_result = response.text.strip()
         
         if text_result.startswith("```json"):
@@ -92,11 +101,10 @@ def handle_receipt(message):
         logger.error(f"Error handling photo: {e}")
         bot.reply_to(message, f"عذراً، حدث خطأ أثناء تحليل الفاتورة: {str(e)}")
 
-# ضبط الـ Webhook عند بدء التشغيل المحلي أو عبر الخادم
+# ضبط الـ Webhook عند بدء التشغيل
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 else:
-    # هذا الجزء يعمل تلقائياً عند التشغيل عبر gunicorn على Render
     RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
     if RENDER_EXTERNAL_URL and TELEGRAM_BOT_TOKEN:
         webhook_url = f"{RENDER_EXTERNAL_URL}/{TELEGRAM_BOT_TOKEN}"
