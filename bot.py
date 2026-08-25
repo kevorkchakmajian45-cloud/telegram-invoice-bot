@@ -1,5 +1,7 @@
 import os
 import logging
+from threading import Thread
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from google import genai
@@ -20,6 +22,18 @@ if not TELEGRAM_BOT_TOKEN or not GOOGLE_API_KEY:
 # تهيئة عميل Gemini الجديد
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
+# 1. إنشاء خادم Flask مصغر لإرضاء منصة Render ومنع انقطاع الاتصال (Timed Out)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 Telegram Invoice Bot is running successfully!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# دالة معالجة الرسائل وفواتير تليجرام
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
@@ -28,7 +42,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ جاري تحليل الفاتورة وتنظيم البيانات...")
 
     try:
-        # استخدام نموذج Gemini لتنظيم بيانات الفاتورة
+        # استخدام نموذج Gemini لتنظيم بيانات الفاتورة المحدث
         prompt = f"""
         قم بتحليل النص التالي المستخرج من الفاتورة واستخرج المعلومات الأساسية بشكل منظم وواضح (مثل: اسم البائع، المبلغ الإجمالي، التاريخ، العناصر أو الخدمات، ورقم الفاتورة إن وجد).
         
@@ -51,13 +65,18 @@ def main():
         print("Error: TELEGRAM_BOT_TOKEN is missing.")
         return
 
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    # تشغيل خادم Flask في خيط (Thread) منفصل في الخلفية
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    print("🌐 Flask server started in background.")
 
-    # الرد على أي رسالة نصية تحتوي على تفاصيل الفاتورة
+    # إعداد بوت تليجرام
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     print("🤖 Bot is running and waiting for invoices...")
     application.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
