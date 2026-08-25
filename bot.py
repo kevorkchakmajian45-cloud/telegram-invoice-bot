@@ -3,7 +3,8 @@ import logging
 import json
 from flask import Flask, request
 import telebot
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from PIL import Image
 import io
 
@@ -17,9 +18,8 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# تهيئة Gemini API بالاسم القياسي المستقر
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# تهيئة عميل Gemini الجديد
+client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # تهيئة بوت التليجرام
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -64,7 +64,12 @@ def handle_receipt(message):
         }
         """
         
-        response = model.generate_content([prompt, image])
+        # استخدام العميل الحديث لطلب التحليل
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[image, prompt]
+        )
+        
         text_result = response.text.strip()
         
         if text_result.startswith("```json"):
