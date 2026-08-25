@@ -5,6 +5,8 @@ from threading import Thread
 from flask import Flask
 import telebot
 import google.generativeai as genai
+from PIL import Image
+import io
 
 # إعداد السجلات
 logging.basicConfig(
@@ -40,19 +42,15 @@ def send_welcome(message):
 
 @bot.message_handler(content_types=['photo'])
 def handle_receipt(message):
-    image_path = "temp_receipt.jpg"
     try:
         bot.reply_to(message, "⏳ جاري قراءة وتحليل الفاتورة بالذكاء الاصطناعي...")
         
-        # تحميل الصورة المرسلة
+        # تحميل الصورة المرسلة مباشرة إلى الذاكرة
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        with open(image_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
-            
-        # رفع الصورة باستخدام ميزة الملفات في GenAI
-        sample_file = genai.upload_file(image_path, mime_type="image/jpeg")
+        # فتح الصورة باستخدام مكتبة PIL من الذاكرة مباشرة
+        image = Image.open(io.BytesIO(downloaded_file))
         
         prompt = """
         قم بتحليل صورة الفاتورة هذه بدقة واستخرج المعلومات التالية فقط بصيغة JSON صريحة وبدون أي نصوص إضافية أو علامات ماركداون:
@@ -64,7 +62,7 @@ def handle_receipt(message):
         }
         """
         
-        response = model.generate_content([sample_file, prompt])
+        response = model.generate_content([prompt, image])
         text_result = response.text.strip()
         
         # تنظيف الرد للحصول على JSON سليم
@@ -85,10 +83,7 @@ def handle_receipt(message):
 
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
-        bot.reply_to(message, "عذراً، حدث خطأ أثناء تحليل الفاتورة. تأكد من وضوح الصورة وحاول مرة أخرى.")
-    finally:
-        if os.path.exists(image_path):
-            os.remove(image_path)
+        bot.reply_to(message, f"عذراً، حدث خطأ أثناء تحليل الفاتورة: {str(e)}")
 
 if __name__ == "__main__":
     t = Thread(target=run_flask)
