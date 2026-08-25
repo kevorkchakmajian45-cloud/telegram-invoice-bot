@@ -2,4 +2,5 @@ pytelegrambotapi
 google-generativeai
 flask
 gspread
-google-auth
+pillow
+gunicorn
